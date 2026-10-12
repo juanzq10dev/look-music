@@ -12,3 +12,6 @@ build/
 *.webm
 *.wav
 out/
+
+# Recorded takes
+take*.mid
