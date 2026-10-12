@@ -6,6 +6,7 @@
 |---|---|---|
 | 1 | `63f6a26` | CLI renderer: MIDI → falling notes (GPU, headless) → MP4 with synth audio |
 | 2 | `bec5c94` | SoundFont piano audio, color modes (track / hand / pitch / auto), bloom glow |
+| 3a | `dd3cd7c` | Live recording: USB MIDI + line-in audio, `record` / `devices` commands (tested with the real piano) |
 
 Benchmarks (Intel UHD 620): Chopin Op. 10 No. 4 (2,187 notes, 1:52) at 1080p60 renders in ~190 s
 without bloom; 720p30 with bloom + SoundFont renders at ~60 fps.
@@ -34,10 +35,10 @@ play live, record the performance as MIDI, and render it.
 
 | # | Module | Owns | Depends on | Acceptance |
 |---|---|---|---|---|
-| 3.1 (done, pending hardware test) | `live/midi_input.py` | port listing, open/close, callback → queue of `(time, type, pitch, velocity)`, sustain CC64 | — | unit tests with a fake port; manual test lists the real piano |
-| 3.2 (done, pending hardware test) | `live/recorder.py` | turn live events into a `Song` and save `.mid` with tempo 120 / 480 PPQ | 3.1 event format | round-trip test: record → save → `load_midi` gives same notes |
+| 3.1 (done, hardware-tested) | `live/midi_input.py` | port listing, open/close, callback → queue of `(time, type, pitch, velocity)`, sustain CC64 | — | unit tests with a fake port; manual test lists the real piano |
+| 3.2 (done, hardware-tested) | `live/recorder.py` | turn live events into a `Song` and save `.mid` with tempo 120 / 480 PPQ | 3.1 event format | round-trip test: record → save → `load_midi` gives same notes |
 | 3.3 | `render/scene.py` (live mode) | `build_live_instances(active, released, t, …)`: held notes grow upward from the keys, released notes float up and fade | existing scene | geometry tests like `test_scene.py` |
-| 3.4 (done, pending hardware test) | `live/audio_capture.py` + `--audio FILE` in CLI | record line-in (aux) to WAV with `sounddevice`, started on the same clock as MIDI capture; store the measured start offset so audio and notes line up; CLI/`render()` accept an existing audio file instead of synth/SoundFont | 3.1 clock | test with a fake input stream; manual check: a struck key's sound and its note hit the keyboard in the same frame (± 1 frame) |
+| 3.4 (done, hardware-tested) | `live/audio_capture.py` + `--audio FILE` in CLI | record line-in (aux) to WAV with `sounddevice`, started on the same clock as MIDI capture; store the measured start offset so audio and notes line up; CLI/`render()` accept an existing audio file instead of synth/SoundFont | 3.1 clock | test with a fake input stream; manual check: a struck key's sound and its note hit the keyboard in the same frame (± 1 frame) |
 | 3.5 | `preview/player.py` | playback clock (play / pause / seek), synced WAV playback, frame scheduling | scene, gl, audio | clock tests; no GUI imports |
 | 3.6 | `gui/` | main window: open file, preview, transport bar, settings panel bound to `Preset`, export dialog, live tab (port picker, record button) | 3.1–3.5 | smoke test launches and closes the window offscreen (`QT_QPA_PLATFORM=offscreen`) |
 | 3.7 | integration + docs | `look-music gui` entry point, README section, end-to-end manual test | all | full suite green; manual checklist below |
