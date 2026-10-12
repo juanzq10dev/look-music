@@ -65,7 +65,7 @@ def render(
             width, height, preset.background, bloom=preset.bloom_settings()
         ) as renderer, VideoWriter(
             output_path, width, height, fps, audio_path=audio_path, crf=crf,
-            audio_offset=delay,
+            audio_offset=delay, duration=total_frames / fps,
         ) as writer:
             for k in range(total_frames):
                 instances = build_instances(notes, k / fps, width, height, layout, preset)

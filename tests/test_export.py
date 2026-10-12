@@ -89,17 +89,60 @@ def test_context_manager_does_not_mask_exception(tmp_path: Path) -> None:
     assert writer is not None and writer._proc.poll() is not None
 
 
-def test_audio_offset_precedes_audio_input(tmp_path: Path) -> None:
+def _af(cmd: list[str]) -> str:
+    return cmd[cmd.index("-af") + 1]
+
+
+def test_positive_audio_offset_uses_adelay(tmp_path: Path) -> None:
     wav = tmp_path / "tone.wav"
     _write_wav(wav)
     out = tmp_path / "out.mp4"
-    with VideoWriter(out, WIDTH, HEIGHT, FPS, audio_path=wav, audio_offset=0.25) as w:
+    with VideoWriter(
+        out, WIDTH, HEIGHT, FPS, audio_path=wav, audio_offset=0.25, duration=FRAMES / FPS
+    ) as w:
         cmd = w.command
         for i in range(FRAMES):
             w.write(_frame(i))
-    k = cmd.index("-itsoffset")
-    assert float(cmd[k + 1]) == pytest.approx(0.25)
-    assert cmd[k + 2] == "-i" and cmd[k + 3] == str(wav)
+    assert "-itsoffset" not in cmd
+    assert _af(cmd) == "adelay=delays=250.000:all=1,apad"
+    assert float(cmd[cmd.index("-t") + 1]) == pytest.approx(FRAMES / FPS)
+    assert "-shortest" not in cmd
+    assert "Audio: aac" in _probe(out)
+
+
+def test_negative_audio_offset_uses_atrim(tmp_path: Path) -> None:
+    wav = tmp_path / "tone.wav"
+    _write_wav(wav)
+    out = tmp_path / "out.mp4"
+    with VideoWriter(
+        out, WIDTH, HEIGHT, FPS, audio_path=wav, audio_offset=-0.25, duration=FRAMES / FPS
+    ) as w:
+        cmd = w.command
+        for i in range(FRAMES):
+            w.write(_frame(i))
+    assert "-itsoffset" not in cmd
+    assert _af(cmd) == "atrim=start=0.250000,asetpts=PTS-STARTPTS,apad"
+    assert "Audio: aac" in _probe(out)
+
+
+def test_no_duration_falls_back_to_shortest(tmp_path: Path) -> None:
+    wav = tmp_path / "tone.wav"
+    _write_wav(wav)
+    with VideoWriter(tmp_path / "out.mp4", WIDTH, HEIGHT, FPS, audio_path=wav) as w:
+        cmd = w.command
+        for i in range(FRAMES):
+            w.write(_frame(i))
+    assert "-shortest" in cmd and "-t" not in cmd
+    assert _af(cmd) == "apad"
+
+
+def test_short_audio_does_not_break_pipe(tmp_path: Path) -> None:
+    wav = tmp_path / "tone.wav"
+    _write_wav(wav)  # 1 s of audio, 5 s of video
+    out = tmp_path / "out.mp4"
+    with VideoWriter(out, WIDTH, HEIGHT, FPS, audio_path=wav, duration=5.0) as w:
+        for i in range(5 * FPS):
+            w.write(_frame(i))
     assert "Audio: aac" in _probe(out)
 
 

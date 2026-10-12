@@ -26,6 +26,7 @@ class VideoWriter:
         crf: int = 18,
         preset: str = "fast",
         audio_offset: float = 0.0,
+        duration: float | None = None,
     ) -> None:
         if width % 2 or height % 2:
             raise ValueError(f"width and height must be even, got {width}x{height}")
@@ -40,12 +41,23 @@ class VideoWriter:
             "-r", str(fps), "-i", "-",
         ]
         if audio_path is not None:
-            if audio_offset:
-                cmd += ["-itsoffset", f"{audio_offset:.6f}"]
             cmd += ["-i", str(audio_path)]
         cmd += ["-map", "0:v"]
         if audio_path is not None:
-            cmd += ["-map", "1:a", "-c:a", "aac", "-b:a", "192k", "-shortest"]
+            # Position the audio with real samples (not a container timestamp offset), and
+            # pad it so it never ends before the video.
+            if audio_offset > 0:
+                chain = [f"adelay=delays={audio_offset * 1000:.3f}:all=1"]
+            elif audio_offset < 0:
+                chain = [f"atrim=start={-audio_offset:.6f}", "asetpts=PTS-STARTPTS"]
+            else:
+                chain = []
+            chain.append("apad")
+            cmd += ["-map", "1:a", "-af", ",".join(chain), "-c:a", "aac", "-b:a", "192k"]
+            if duration is None:
+                cmd += ["-shortest"]
+        if duration is not None:
+            cmd += ["-t", f"{duration:.6f}"]
         cmd += [
             "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(path),
@@ -83,6 +95,10 @@ class VideoWriter:
         try:
             self._proc.stdin.write(frame)
         except OSError as exc:  # BrokenPipeError, or EINVAL on Windows
+            try:
+                self._proc.wait(timeout=5)  # let ffmpeg finish so stderr is complete
+            except subprocess.TimeoutExpired:
+                pass
             raise RuntimeError(f"ffmpeg stopped accepting frames: {self._stderr_tail()}") from exc
         self.frames_written += 1
 
@@ -94,7 +110,7 @@ class VideoWriter:
         assert self._proc.stdin is not None
         try:
             self._proc.stdin.close()
-        except OSError:
+        except OSError:  # includes BrokenPipeError from flushing buffered data
             pass  # ffmpeg already exited; the return code below reports why
         returncode = self._proc.wait()
         if returncode != 0:
