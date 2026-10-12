@@ -87,3 +87,26 @@ def test_context_manager_does_not_mask_exception(tmp_path: Path) -> None:
             writer.write(_frame(0))
             raise KeyError("boom")
     assert writer is not None and writer._proc.poll() is not None
+
+
+def test_audio_offset_precedes_audio_input(tmp_path: Path) -> None:
+    wav = tmp_path / "tone.wav"
+    _write_wav(wav)
+    out = tmp_path / "out.mp4"
+    with VideoWriter(out, WIDTH, HEIGHT, FPS, audio_path=wav, audio_offset=0.25) as w:
+        cmd = w.command
+        for i in range(FRAMES):
+            w.write(_frame(i))
+    k = cmd.index("-itsoffset")
+    assert float(cmd[k + 1]) == pytest.approx(0.25)
+    assert cmd[k + 2] == "-i" and cmd[k + 3] == str(wav)
+    assert "Audio: aac" in _probe(out)
+
+
+def test_no_audio_offset_by_default(tmp_path: Path) -> None:
+    wav = tmp_path / "tone.wav"
+    _write_wav(wav)
+    with VideoWriter(tmp_path / "out.mp4", WIDTH, HEIGHT, FPS, audio_path=wav) as w:
+        assert "-itsoffset" not in w.command
+        for i in range(FRAMES):
+            w.write(_frame(i))

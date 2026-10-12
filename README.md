@@ -29,6 +29,8 @@ uv run look-music render song.mid -o song.mp4
 | `--crf` | 18 | x264 quality, lower is better |
 | `--no-audio` | off | Omit the audio track |
 | `--soundfont PATH` | `$LOOK_MUSIC_SOUNDFONT`, else built-in synth | SF2 SoundFont used for piano audio (see [Audio](#audio)) |
+| `--audio FILE` | synthesized | Use this audio file (e.g. a recording from `look-music record`) as the soundtrack |
+| `--audio-offset SECONDS` | 0 | With `--audio`: positive delays the audio, negative advances it (sync correction) |
 | `--no-bloom` | off | Disable the glow around notes, regardless of the preset |
 
 ### Audio
@@ -50,6 +52,39 @@ general-purpose SoundFont with a good piano preset. Any SF2 file works; the pian
 
 If no SoundFont is given, the built-in synth is used. It needs no extra files, but sounds much
 more basic than a sampled piano.
+
+### Recording from a digital piano
+
+Connect the piano to the PC with USB (MIDI) and run a cable from its headphone/line output into
+the PC's line-in or microphone jack (aux), so its real sound is captured too.
+
+```sh
+uv run look-music devices
+uv run look-music record take.mid --audio take.wav
+```
+
+`devices` lists the MIDI input ports and audio input devices. `record` uses the only MIDI port if
+there is exactly one; otherwise choose with `--midi-port` (name or index) and, for audio,
+`--audio-device` (name or index). Press Ctrl+C to stop; the take is saved either way. Then render it:
+
+```sh
+uv run look-music render take.mid --audio take.wav -o take.mp4
+```
+
+While recording, a status line shows elapsed time, notes played and a level meter. Check that the
+meter moves when you play, and that it does not show `CLIP` (lower the input volume if it does).
+If the sound and the falling notes are slightly out of step, shift the audio with
+`--audio-offset` (positive delays it, negative advances it), e.g. `--audio-offset -0.04`.
+
+| Command / option | Default | Description |
+|---|---|---|
+| `devices` | | List MIDI input ports and audio input devices |
+| `record OUT.mid` | | Record MIDI from a keyboard |
+| `--audio OUT.wav` | off | Also record line-in audio to this WAV file |
+| `--midi-port NAME_OR_INDEX` | the only port | MIDI input port |
+| `--audio-device NAME_OR_INDEX` | system default | Audio input device |
+| `--sample-rate`, `--channels` | 48000, 2 | Audio format |
+| `--duration SECONDS` | until Ctrl+C | Stop automatically |
 
 ### Presets
 
@@ -124,4 +159,5 @@ uv run pytest
 | `render/gl.py` | Offscreen GPU rasteriser; optional bloom (separable Gaussian glow composited over the scene) |
 | `audio.py` | SF2 SoundFont rendering via tinysoundfont, built-in piano-like synth fallback, WAV output |
 | `export.py` | Frames + audio → MP4 via ffmpeg |
+| `live/` | Live capture: MIDI input, line-in audio recorder, shared session clock, `.mid` writer, `record_take` session loop |
 | `cli.py` | Command-line entry point |

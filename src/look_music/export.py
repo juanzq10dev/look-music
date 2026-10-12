@@ -25,6 +25,7 @@ class VideoWriter:
         audio_path: str | Path | None = None,
         crf: int = 18,
         preset: str = "fast",
+        audio_offset: float = 0.0,
     ) -> None:
         if width % 2 or height % 2:
             raise ValueError(f"width and height must be even, got {width}x{height}")
@@ -39,6 +40,8 @@ class VideoWriter:
             "-r", str(fps), "-i", "-",
         ]
         if audio_path is not None:
+            if audio_offset:
+                cmd += ["-itsoffset", f"{audio_offset:.6f}"]
             cmd += ["-i", str(audio_path)]
         cmd += ["-map", "0:v"]
         if audio_path is not None:
@@ -48,6 +51,7 @@ class VideoWriter:
             "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(path),
         ]
 
+        self.command = cmd
         self._proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
         )
