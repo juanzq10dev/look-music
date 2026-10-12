@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Rendered output
+*.mp4
+*.mov
+*.webm
+*.wav
+out/
