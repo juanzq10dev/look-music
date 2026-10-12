@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 
 import numpy as np
 
 from look_music.keyboard import HIGHEST_PITCH, LOWEST_PITCH, KeyboardLayout
+from look_music.live.state import LiveNote
 from look_music.midi import Song
 from look_music.preset import Preset
 
@@ -96,11 +98,7 @@ def build_instances(
     idx = np.flatnonzero(visible)
     start, end, pitch = notes.start[idx], notes.end[idx], notes.pitch[idx].astype(np.intp)
 
-    colors = notes.base_color[idx].astype(np.float64)
-    low = preset.min_velocity_brightness
-    brightness = low + (1 - low) * notes.velocity[idx] / 127
-    brightness = np.where(layout.black[pitch], brightness * preset.black_note_darkness, brightness)
-    colors = colors * brightness[:, None]
+    colors = _note_colors(notes.base_color[idx], notes.velocity[idx], pitch, layout, preset)
 
     # Per-pitch colour of the most recently started sounding note (notes are start-sorted).
     sounding = (start <= t) & (t < end)
@@ -124,6 +122,38 @@ def build_instances(
         1.0,
     )
 
+    key_rows = _keyboard_rows(
+        width, height, keyboard_top, layout, preset, sound_color, is_sounding
+    )
+    return np.concatenate([note_rows, key_rows])
+
+
+def _note_colors(
+    base: np.ndarray,
+    velocity: np.ndarray,
+    pitch: np.ndarray,
+    layout: KeyboardLayout,
+    preset: Preset,
+) -> np.ndarray:
+    """Apply velocity brightness and black-key darkness to base colours (float64, (n, 3))."""
+    low = preset.min_velocity_brightness
+    brightness = low + (1 - low) * velocity / 127
+    brightness = np.where(layout.black[pitch], brightness * preset.black_note_darkness, brightness)
+    return base.astype(np.float64) * brightness[:, None]
+
+
+def _keyboard_rows(
+    width: int,
+    height: int,
+    keyboard_top: float,
+    layout: KeyboardLayout,
+    preset: Preset,
+    sound_color: np.ndarray,
+    is_sounding: np.ndarray,
+) -> np.ndarray:
+    """Edge strip, white keys, then black keys; sounding keys mix in the note colour."""
+    scale = height / 1080
+    keyboard_h = height - keyboard_top
     edge_h = EDGE_HEIGHT * scale
     edge_row = _rows(
         0.0, keyboard_top - edge_h, float(width), edge_h, preset.keyboard_edge, 0.0, 0.0
@@ -158,4 +188,56 @@ def build_instances(
         BLACK_KEY_RADIUS * scale,
         0.0,
     )
-    return np.concatenate([note_rows, edge_row, white_rows, black_rows])
+    return np.concatenate([edge_row, white_rows, black_rows])
+
+
+def build_live_instances(
+    notes: Sequence[LiveNote],
+    t: float,
+    width: int,
+    height: int,
+    layout: KeyboardLayout,
+    preset: Preset,
+) -> np.ndarray:
+    """Instances (N, 10) for live mode: notes rise from the keyboard; lit keys for held notes."""
+    scale = height / 1080
+    keyboard_top = height * (1 - preset.keyboard_height)
+    speed = keyboard_top / preset.seconds_visible
+    gap = preset.note_gap * scale
+
+    notes = [n for n in notes if LOWEST_PITCH <= n.pitch <= HIGHEST_PITCH]
+    pitch = np.array([n.pitch for n in notes], dtype=np.intp)
+    velocity = np.array([n.velocity for n in notes], dtype=np.int16)
+    start = np.array([n.start for n in notes], dtype=np.float64)
+    held = np.array([n.end is None for n in notes], dtype=bool)
+    end = np.array([t if n.end is None else n.end for n in notes], dtype=np.float64)
+
+    live_preset = replace(preset, color_mode="hand") if preset.color_mode == "auto" else preset
+    base = _base_colors(pitch, np.zeros(len(notes), dtype=np.int16), live_preset)
+    colors = _note_colors(base, velocity, pitch, layout, preset)
+
+    # Per-pitch colour of the most recently started held note.
+    sound_color = np.zeros((128, 3))
+    is_sounding = np.zeros(128, dtype=bool)
+    order = np.argsort(start, kind="stable")
+    hp = order[held[order]]
+    sound_color[pitch[hp]] = colors[hp]
+    is_sounding[pitch[hp]] = True
+
+    bottom = keyboard_top - (t - end) * speed
+    top = keyboard_top - (t - start) * speed
+    sel = np.flatnonzero((bottom > 0) & ((bottom - top) >= 1))
+    sel = sel[np.argsort(layout.black[pitch[sel]], kind="stable")]  # white notes first
+    note_rows = _rows(
+        layout.x[pitch[sel]] + gap,
+        top[sel],
+        layout.width[pitch[sel]] - 2 * gap,
+        bottom[sel] - top[sel],
+        colors[sel],
+        preset.note_radius * scale,
+        1.0,
+    )
+    key_rows = _keyboard_rows(
+        width, height, keyboard_top, layout, preset, sound_color, is_sounding
+    )
+    return np.concatenate([note_rows, key_rows])

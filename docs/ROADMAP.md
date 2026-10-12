@@ -37,11 +37,11 @@ play live, record the performance as MIDI, and render it.
 |---|---|---|---|---|
 | 3.1 (done, hardware-tested) | `live/midi_input.py` | port listing, open/close, callback → queue of `(time, type, pitch, velocity)`, sustain CC64 | — | unit tests with a fake port; manual test lists the real piano |
 | 3.2 (done, hardware-tested) | `live/recorder.py` | turn live events into a `Song` and save `.mid` with tempo 120 / 480 PPQ | 3.1 event format | round-trip test: record → save → `load_midi` gives same notes |
-| 3.3 | `render/scene.py` (live mode) | `build_live_instances(active, released, t, …)`: held notes grow upward from the keys, released notes float up and fade | existing scene | geometry tests like `test_scene.py` |
+| 3.3 (done, pending hands-on test) | `render/scene.py` (live mode) | `build_live_instances(active, released, t, …)`: held notes grow upward from the keys, released notes float up and fade | existing scene | geometry tests like `test_scene.py` |
 | 3.4 (done, hardware-tested) | `live/audio_capture.py` + `--audio FILE` in CLI | record line-in (aux) to WAV with `sounddevice`, started on the same clock as MIDI capture; store the measured start offset so audio and notes line up; CLI/`render()` accept an existing audio file instead of synth/SoundFont | 3.1 clock | test with a fake input stream; manual check: a struck key's sound and its note hit the keyboard in the same frame (± 1 frame) |
-| 3.5 | `preview/player.py` | playback clock (play / pause / seek), synced WAV playback, frame scheduling | scene, gl, audio | clock tests; no GUI imports |
-| 3.6 | `gui/` | main window: open file, preview, transport bar, settings panel bound to `Preset`, export dialog, live tab (port picker, record button) | 3.1–3.5 | smoke test launches and closes the window offscreen (`QT_QPA_PLATFORM=offscreen`) |
-| 3.7 | integration + docs | `look-music gui` entry point, README section, end-to-end manual test | all | full suite green; manual checklist below |
+| 3.5 (done, pending hands-on test) | `preview/player.py` | playback clock (play / pause / seek), synced WAV playback, frame scheduling | scene, gl, audio | clock tests; no GUI imports |
+| 3.6 (done, pending hands-on test) | `gui/` | main window: open file, preview, transport bar, settings panel bound to `Preset`, export dialog, live tab (port picker, record button) | 3.1–3.5 | smoke test launches and closes the window offscreen (`QT_QPA_PLATFORM=offscreen`) |
+| 3.7 (done, pending hands-on test) | integration + docs | `look-music gui` entry point, README section, end-to-end manual test | all | full suite green; manual checklist below |
 
 Order: 3.1, 3.3 and 3.5 in parallel → 3.2 and 3.4 → 3.6 → 3.7.
 First step (usable before the GUI exists): 3.1 + 3.2 + 3.4 as a CLI command
@@ -62,7 +62,7 @@ First step (usable before the GUI exists): 3.1 + 3.2 + 3.4 as a CLI command
 - **Clock drift:** MIDI timestamps (RtMidi) and audio frames (sound card) run on different clocks; over long
   takes, re-anchor using the audio sample count as the master clock.
 
-## Later
+## Phase 4 — candidates
 
 - Particles at note onsets (GPU points + noise turbulence)
 - Audio → MIDI with TransKun (`look-music transcribe song.wav`) — SeeMusic's AI feature

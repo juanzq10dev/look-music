@@ -5,7 +5,13 @@ import numpy as np
 from look_music.keyboard import key_layout
 from look_music.midi import Note, Song
 from look_music.preset import Preset, hex_to_rgb
-from look_music.render.scene import INSTANCE_COLUMNS, build_instances, prepare_notes
+from look_music.live.state import LiveNote
+from look_music.render.scene import (
+    INSTANCE_COLUMNS,
+    build_instances,
+    build_live_instances,
+    prepare_notes,
+)
 
 W, H = 1920, 1080
 PRESET = Preset()
@@ -109,3 +115,60 @@ def test_hand_mode_note_color_in_instances():
     notes = [note(0, 2, pitch=40, velocity=127)]
     out = build(notes, 0.0, Preset(color_mode="hand"))
     assert np.allclose(out[0, 4:7], hex_to_rgb("#F06292"), atol=1e-5)
+
+
+def live(notes, t, preset=PRESET):
+    return build_live_instances(notes, t, W, H, LAYOUT, preset)
+
+
+SPEED = KEYBOARD_TOP / PRESET.seconds_visible
+
+
+def test_live_empty_has_only_keyboard_rows():
+    out = live([], 0.0)
+    assert out.dtype == np.float32
+    assert out.shape == (KEY_ROWS, INSTANCE_COLUMNS)
+
+
+def test_live_held_note_grows_from_keyboard():
+    n = LiveNote(60, 100, 1.0, None)
+    a, b = live([n], 1.5)[0], live([n], 2.0)[0]
+    assert np.isclose(a[1] + a[3], KEYBOARD_TOP)
+    assert np.isclose(b[1] + b[3], KEYBOARD_TOP)
+    assert np.isclose(a[3], 0.5 * SPEED, rtol=1e-4)
+    assert np.isclose(b[3], 1.0 * SPEED, rtol=1e-4)
+
+
+def test_live_released_note_floats_up():
+    out = live([LiveNote(60, 100, 1.0, 2.0)], 3.0)
+    assert out.shape[0] == KEY_ROWS + 1
+    assert np.isclose(out[0, 1] + out[0, 3], KEYBOARD_TOP - 1.0 * SPEED, rtol=1e-4)
+    assert np.isclose(out[0, 3], 1.0 * SPEED, rtol=1e-4)
+
+
+def test_live_offscreen_notes_omitted():
+    n = LiveNote(60, 100, 0.0, 1.0)
+    assert live([n], 1.0 + PRESET.seconds_visible + 0.1).shape[0] == KEY_ROWS
+
+
+def test_live_auto_color_is_hand_split():
+    out = live([LiveNote(40, 127, 0.0, None), LiveNote(79, 127, 0.0, None)], 1.0)
+    by_x = {round(float(r[0]), 2): r[4:7] for r in out[:2]}
+    left = by_x[round(float(LAYOUT.x[40] + PRESET.note_gap), 2)]
+    right = by_x[round(float(LAYOUT.x[79] + PRESET.note_gap), 2)]
+    assert np.allclose(left, PRESET.left_hand_color, atol=1e-5)
+    assert np.allclose(right, PRESET.right_hand_color, atol=1e-5)
+
+
+def test_live_held_key_lit_with_glow():
+    out = live([LiveNote(60, 100, 0.0, None)], 1.0)
+    assert out[0, 9] == 1.0
+    keys = out[2:]
+    lit = np.isclose(keys[:, 0], LAYOUT.x[60])
+    assert lit.sum() == 1 and keys[lit, 9][0] == 1.0
+    assert np.all(keys[~lit, 9] == 0.0)
+
+
+def test_live_released_key_not_lit():
+    out = live([LiveNote(60, 100, 0.0, 0.5)], 1.0)
+    assert np.all(out[2:, 9] == 0.0)

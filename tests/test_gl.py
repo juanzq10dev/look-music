@@ -103,3 +103,40 @@ def test_bloom_empty_and_growth(bloom_renderer):
     img = frame(bloom_renderer, [])
     assert np.abs(img.astype(float) - BG_BYTES).max() <= 1
     frame(bloom_renderer, [[1, 1, 5, 5, 1, 1, 1, 1, 0, 1]] * 3000)
+
+
+def _make(bg, bloom):
+    try:
+        return Renderer(W, H, bg, bloom)
+    except Exception as exc:
+        pytest.skip(f"no GL context: {exc}")
+
+
+def _px(r: Renderer):
+    rect = np.array([[10, 10, 20, 10, 0, 1, 0, 1, 0, 0]], dtype="f4")
+    data = r.render(rect)
+    assert len(data) == W * H * 3
+    img = np.frombuffer(data, dtype=np.uint8).reshape(H, W, 3)
+    return tuple(img[40, 60]), tuple(img[15, 20])
+
+
+@pytest.mark.parametrize("bloom_a,bloom_b", [(None, None), (BloomSettings(), None), (None, BloomSettings()), (BloomSettings(), BloomSettings())])
+def test_multiple_renderers(bloom_a, bloom_b):
+    a = _make((1.0, 0.0, 0.0), bloom_a)
+    b = _make((0.0, 0.0, 1.0), bloom_b)
+    try:
+        for _ in range(2):
+            assert _px(a) == ((255, 0, 0), (0, 255, 0))
+            assert _px(b) == ((0, 0, 255), (0, 255, 0))
+        b.release()
+        b.release()  # idempotent
+        assert _px(a) == ((255, 0, 0), (0, 255, 0))
+        c = _make((0.0, 1.0, 1.0), bloom_b)
+        try:
+            assert _px(c) == ((0, 255, 255), (0, 255, 0))
+            assert _px(a) == ((255, 0, 0), (0, 255, 0))
+        finally:
+            c.release()
+    finally:
+        a.release()
+        b.release()

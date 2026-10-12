@@ -13,6 +13,55 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). ffmpeg is bundled vi
 uv sync
 ```
 
+## Desktop app
+
+```sh
+uv run look-music gui
+uv run look-music gui song.mid
+```
+
+The desktop app has a **Playback** tab and a **Live** tab, plus a **Settings** panel on the right.
+Open a MIDI file with File > Open MIDI… (Ctrl+O).
+
+**Playback** previews a MIDI file with sound, and exports it to video.
+
+- Play/pause with the button or Space; drag the seek slider to move through the song.
+- Audio source: *Built-in synth*, *SoundFont…* (an SF2 file; starts from `LOOK_MUSIC_SOUNDFONT` if set), or *Audio file…* (a WAV, such as a recording).
+- The preview is always rendered at 1280 × 720.
+- File > Load preset… and File > Save preset… read and write JSON presets.
+
+**Settings** edits the current preset, and the preview updates as you change it:
+
+- Colour mode (auto, track, hand, pitch) and the left-hand, right-hand and background colours
+- Fall time (1–8 s) and keyboard height
+- Bloom on/off, bloom intensity and bloom radius
+
+**Export** (File > Export video…) asks for an output file (defaults to the MIDI name with `.mp4`),
+a resolution (1280 × 720, 1920 × 1080 or 3840 × 2160) and a frame rate (30 or 60). A progress
+dialog shows the render. Cancel stops it and deletes the partial file. The export uses the audio
+source selected in Playback.
+
+**Live** works with a keyboard connected by USB, with its sound on line-in (see
+[Recording from a digital piano](#recording-from-a-digital-piano)).
+
+- Pick the MIDI port and the audio input. Refresh rescans them, for example after plugging in the piano.
+- **Start live** shows the notes rising from the keys as you play; **Stop live** ends it.
+- The level meter appears when an audio input is selected and moves with its signal. The bar rises
+  at once and falls back slowly. It turns red for a second when the input reaches full scale (clipping).
+- **Record** starts a take and the button becomes **Stop recording**. Stopping saves the take and
+  opens it in Playback, ready to export.
+- Takes are saved to `~/Music/look-music/` as `take-YYYYMMDD-HHMMSS.mid`, with a matching `.wav`
+  when an audio input was selected. When a take is opened, its WAV becomes the audio source, so the
+  export uses the real recording.
+
+**Typical workflow**
+
+1. Connect the piano to the PC by USB, and run a cable from its headphone/line output into the PC's line-in.
+2. Run `uv run look-music gui` and open the **Live** tab. Choose the MIDI port and the audio input.
+3. Click **Start live**, play, and check that the meter moves without going red. Adjust the input level if needed.
+4. Click **Record**, play the piece, then click **Stop recording**. The take opens in Playback.
+5. Choose File > Export video…
+
 ## Usage
 
 ```sh
@@ -159,5 +208,7 @@ uv run pytest
 | `render/gl.py` | Offscreen GPU rasteriser; optional bloom (separable Gaussian glow composited over the scene) |
 | `audio.py` | SF2 SoundFont rendering via tinysoundfont, built-in piano-like synth fallback, WAV output |
 | `export.py` | Frames + audio → MP4 via ffmpeg |
-| `live/` | Live capture: MIDI input, line-in audio recorder, shared session clock, `.mid` writer, `record_take` session loop |
-| `cli.py` | Command-line entry point |
+| `live/` | Live capture: MIDI input, line-in audio recorder and level meter, shared session clock, live note state, `.mid` writer, `record_take` session loop |
+| `preview/` | Desktop app playback: `frames.py` preview frame source, `player.py` play/pause/seek clock with synced WAV playback |
+| `gui/` | Desktop app (PySide6): `app.py` entry point, `main_window.py`, `playback_tab.py`, `live_tab.py`, `settings_panel.py`, `export_worker.py`, `preview_widget.py` |
+| `cli.py` | Command-line entry point (`render`, `gui`, `devices`, `record`) |

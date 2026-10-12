@@ -138,6 +138,11 @@ class Renderer:
         self.background = background
         self.bloom = bloom
         self.ctx = moderngl.create_standalone_context(require=330)
+        with self.ctx:
+            self._setup(bloom)
+
+    def _setup(self, bloom: BloomSettings | None) -> None:
+        width, height = self.width, self.height
         self._objects: list[object] = []
         self.prog = self._track(
             self.ctx.program(vertex_shader=_VERTEX_SHADER, fragment_shader=_FRAGMENT_SHADER)
@@ -251,6 +256,10 @@ class Renderer:
 
     def render(self, instances: np.ndarray) -> bytes:
         """Draw one frame; return RGB24 bytes, rows top-to-bottom."""
+        with self.ctx:  # make this renderer's context current (several may coexist)
+            return self._render(instances)
+
+    def _render(self, instances: np.ndarray) -> bytes:
         self.fbo.use()
         self.ctx.viewport = (0, 0, self.width, self.height)
         self.ctx.disable(moderngl.BLEND)
@@ -288,10 +297,13 @@ class Renderer:
         return self.out_fbo.read(components=3)
 
     def release(self) -> None:
-        for obj in reversed(self._objects):
-            obj.release()
-        self._objects.clear()
-        self.vao = self.instance_vbo = None
+        if not self._objects and self.vao is None:
+            return
+        with self.ctx:
+            for obj in reversed(self._objects):
+                obj.release()
+            self._objects.clear()
+            self.vao = self.instance_vbo = None
         self.ctx.release()
 
     def __enter__(self) -> Renderer:

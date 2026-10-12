@@ -72,8 +72,13 @@ def _setup():
     return backend, streams, factory
 
 
-def _inject(backend, streams, done: threading.Event) -> threading.Thread:
-    """Background thread playing two notes and feeding audio blocks."""
+def _inject(
+    backend, streams, done: threading.Event, played: threading.Event
+) -> threading.Thread:
+    """Background thread playing two notes and feeding audio blocks.
+
+    `played` is set once every message has been sent (the audio keeps flowing until `done`).
+    """
 
     def run():
         while not streams or backend.callback is None:
@@ -89,6 +94,7 @@ def _inject(backend, streams, done: threading.Event) -> threading.Thread:
             if step:
                 backend.send(*step)
             time.sleep(0.03)
+        played.set()
         while not done.is_set():
             stream.feed(np.full((BLOCK, 2), 0.1, dtype=np.float32))
             time.sleep(0.03)
@@ -100,18 +106,18 @@ def _inject(backend, streams, done: threading.Event) -> threading.Thread:
 
 def test_record_take_saves_midi_and_audio(tmp_path):
     backend, streams, factory = _setup()
-    done = threading.Event()
-    t = _inject(backend, streams, done)
+    done, played = threading.Event(), threading.Event()
+    t = _inject(backend, streams, done, played)
     statuses = []
     result = record_take(
         tmp_path / "t.mid", midi_port=0, audio_path=tmp_path / "t.wav", sample_rate=RATE,
-        duration=0.5, on_status=lambda *a: statuses.append(a),
+        stop_event=played, on_status=lambda *a: statuses.append(a),
         midi_backend=backend, audio_stream_factory=factory, poll_interval=0.01,
     )
     done.set()
     t.join()
     assert result.midi_path.exists() and result.audio_path.exists()
-    assert result.duration >= 0.5
+    assert result.duration > 0
     assert result.note_count == 2
     assert result.audio_start_offset is not None
     assert result.audio_overflows == 0
@@ -121,7 +127,7 @@ def test_record_take_saves_midi_and_audio(tmp_path):
     assert starts == sorted(starts) and starts[0] < starts[1]
     with wave.open(str(tmp_path / "t.wav"), "rb") as w:
         assert w.getnframes() > 0 and w.getframerate() == RATE
-    assert statuses and statuses[-1][1] == 2 and statuses[-1][2] > 0
+    assert statuses and any(level > 0 for _, _, level in statuses)
     assert backend.closed and streams[0].closed
 
 
@@ -151,16 +157,16 @@ def test_stop_event_stops_early(tmp_path):
 
 def test_keyboard_interrupt_still_saves(tmp_path):
     backend, streams, factory = _setup()
-    done = threading.Event()
-    t = _inject(backend, streams, done)
+    done, played = threading.Event(), threading.Event()
+    t = _inject(backend, streams, done, played)
 
     def on_status(elapsed, notes, level):
-        if notes >= 2:
+        if played.is_set():  # everything was sent; the final drain still collects it
             raise KeyboardInterrupt
 
     result = record_take(
         tmp_path / "t.mid", midi_port=0, audio_path=tmp_path / "t.wav", sample_rate=RATE,
-        duration=30, on_status=on_status,
+        on_status=on_status,
         midi_backend=backend, audio_stream_factory=factory, poll_interval=0.01,
     )
     done.set()

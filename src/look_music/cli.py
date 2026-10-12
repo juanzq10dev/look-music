@@ -103,6 +103,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--no-bloom", action="store_true", help="disable the glow, regardless of preset")
 
+    g = sub.add_parser("gui", help="open the desktop app (playback preview, export, live recording)")
+    g.add_argument("midi", type=Path, nargs="?", help="MIDI file to open")
+
     sub.add_parser("devices", help="list MIDI input ports and audio input devices")
 
     r = sub.add_parser("record", help="record a take from a MIDI keyboard (and line-in audio)")
@@ -230,6 +233,10 @@ def _record(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
+    if args.command == "gui":
+        from look_music.gui.app import main as gui_main
+
+        return gui_main([sys.argv[0]], midi=args.midi)
     if args.command == "devices":
         return _devices()
     if args.command == "record":
