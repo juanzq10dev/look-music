@@ -90,6 +90,10 @@ class MainWindow(QMainWindow):
                 action.setShortcut(shortcut)
             action.triggered.connect(slot)
             menu.addAction(action)
+            if text == "&Export video…":
+                self.playback_tab.export_running.connect(
+                    lambda running, a=action: a.setEnabled(not running)
+                )
             if text == "&Save preset…" or text == "&Export video…":
                 menu.addSeparator()
 

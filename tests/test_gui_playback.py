@@ -126,3 +126,146 @@ def test_cli_gui_help():
     with pytest.raises(SystemExit) as exc:
         cli_main(["gui", "--help"])
     assert exc.value.code == 0
+
+
+# --- threaded export regressions -------------------------------------------------------------
+
+import subprocess
+import time
+
+import numpy as np
+from PySide6.QtCore import QEventLoop, QThread, QTimer, Slot
+import imageio_ffmpeg
+
+from look_music.cli import render as cli_render
+from look_music.gui import export_worker, playback_tab as pt
+
+
+def _wait_until(cond, timeout=60.0):
+    loop = QEventLoop()
+    poll = QTimer()
+    poll.setInterval(20)
+    deadline = time.monotonic() + timeout
+    poll.timeout.connect(lambda: loop.quit() if cond() or time.monotonic() > deadline else None)
+    poll.start()
+    loop.exec()
+    poll.stop()
+    return cond()
+
+
+@pytest.fixture
+def short_midi(tmp_path):
+    pm = pretty_midi.PrettyMIDI()
+    inst = pretty_midi.Instrument(program=0)
+    inst.notes.append(pretty_midi.Note(velocity=100, pitch=64, start=0.2, end=1.2))
+    inst.notes.append(pretty_midi.Note(velocity=100, pitch=71, start=1.0, end=2.0))
+    pm.instruments.append(inst)
+    path = tmp_path / "short.mid"
+    pm.write(str(path))
+    return path
+
+
+@pytest.fixture
+def tab_window(qapp, short_midi):
+    w = MainWindow(audio_enabled=False)
+    w.playback_tab.open_midi(short_midi)
+    yield w
+    w.close()
+
+
+def _decode_audio(path):
+    exe = imageio_ffmpeg.get_ffmpeg_exe()
+    raw = subprocess.run(
+        [exe, "-v", "error", "-i", str(path), "-vn", "-af", "aresample=async=1:first_pts=0", "-f", "s16le", "-ac", "1", "-ar", "44100", "-"],
+        capture_output=True, check=True,
+    ).stdout
+    return np.frombuffer(raw, dtype="<i2")
+
+
+class _SpyDialog:
+    """Stands in for QProgressDialog and records the thread each call runs on."""
+
+    def __init__(self, app):
+        self.app = app
+        self.calls: list[tuple[str, bool]] = []
+
+    def __getattr__(self, name):
+        def call(*args):
+            self.calls.append((name, QThread.currentThread() is self.app.thread()))
+        return call
+
+
+def test_threaded_export_slots_run_in_gui_thread(qapp, tab_window, tmp_path):
+    tab = tab_window.playback_tab
+    spy = _SpyDialog(qapp)
+    tab._export_progress = spy
+    out = tmp_path / "t.mp4"
+    tab.start_export(out, 320, 180, 10)
+    assert _wait_until(lambda: tab._export_thread is None)
+    assert out.stat().st_size > 0
+    names = {n for n, _ in spy.calls}
+    assert {"setLabelText", "setMaximum", "setValue", "close"} <= names
+    assert all(in_gui for _, in_gui in spy.calls)
+    assert tab._export_progress is None
+    assert tab._timer.isActive()
+
+
+def test_threaded_export_closes_real_dialog(qapp, tab_window, tmp_path):
+    tab = tab_window.playback_tab
+    out = tmp_path / "d.mp4"
+    tab.run_export(out, 320, 180, 10)
+    assert tab._export_progress is not None
+    assert _wait_until(lambda: tab._export_thread is None)
+    assert tab._export_progress is None
+    assert out.stat().st_size > 0
+
+
+def test_export_audio_alignment_matches_cli(tab_window, short_midi, tmp_path):
+    out = tmp_path / "gui.mp4"
+    worker = tab_window.playback_tab.start_export(out, 320, 180, 10, threaded=False)
+    worker.audio = True
+    worker.run()
+    ref = tmp_path / "cli.mp4"
+    cli_render(
+        short_midi, ref, width=320, height=180, fps=10, preset=Preset(),
+        lead_in=1.0, tail=1.0, crf=18, audio=True,
+    )
+    a, b = _decode_audio(out), _decode_audio(ref)
+    first = lambda x: int(np.argmax(np.abs(x) > 200))
+    assert abs(first(a) - first(b)) < 4410  # within one frame
+    assert abs(len(a) - len(b)) < 4410
+    assert first(a) > 44100  # lead-in respected
+
+
+def test_cancel_during_audio_prep(tab_window, tmp_path, monkeypatch):
+    out = tmp_path / "c.mp4"
+    tab = tab_window.playback_tab
+    worker = tab.start_export(out, 320, 180, 10, threaded=False)
+    worker.audio = True
+    real = export_worker.synthesize
+
+    def slow(*args, **kwargs):
+        worker.cancel()
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(export_worker, "synthesize", slow)
+    errors: list[str] = []
+    stages: list[str] = []
+    worker.failed.connect(errors.append)
+    worker.stage.connect(stages.append)
+    worker.run()
+    assert errors == ["Export cancelled"]
+    assert stages == ["Preparing audio…"]
+    assert not out.exists()
+
+
+def test_shutdown_during_running_export(qapp, short_midi, tmp_path):
+    w = MainWindow(audio_enabled=False)
+    tab = w.playback_tab
+    tab.open_midi(short_midi)
+    out = tmp_path / "s.mp4"
+    tab.run_export(out, 640, 360, 30)
+    assert tab._export_thread.isRunning()
+    w.close()
+    assert tab._export_thread is None
+    assert not out.exists()

@@ -7,7 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QObject, QRunnable, Qt, QThread, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QObject, QRunnable, Qt, QThread, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
@@ -80,6 +80,8 @@ def _delayed(samples: np.ndarray, rate: int, delay: float) -> np.ndarray:
 class PlaybackTab(QWidget):
     """Preview, transport and export for one MIDI file."""
 
+    export_running = Signal(bool)
+
     def __init__(
         self, parent: QWidget | None = None, preset: Preset | None = None,
         audio_enabled: bool = True,
@@ -100,6 +102,8 @@ class PlaybackTab(QWidget):
         self._pending_jobs: set[_AudioJob] = set()
         self._updating = False
         self._export_thread: QThread | None = None
+        self._export_worker: ExportWorker | None = None
+        self._export_progress: QProgressDialog | None = None
 
         self.preview = PreviewWidget()
         self.play_button = QPushButton("Play")
@@ -230,19 +234,22 @@ class PlaybackTab(QWidget):
             return
         job = _AudioJob(self._audio_token, self._audio_job())
         job.setAutoDelete(False)
-        job.signals.ready.connect(self._on_audio_ready)
-        job.signals.failed.connect(self._on_audio_failed)
+        queued = Qt.ConnectionType.QueuedConnection
+        job.signals.ready.connect(self._on_audio_ready, queued)
+        job.signals.failed.connect(self._on_audio_failed, queued)
         self._pending_jobs.add(job)
         self.player.set_audio(None, SAMPLE_RATE)
         self.status.setText("Preparing audio…")
         self._pool.start(job)
 
+    @Slot(int, object, int)
     def _on_audio_ready(self, token: int, samples: object, rate: int) -> None:
         if token != self._audio_token or self.player is None:
             return
         self.player.set_audio(samples, rate)
         self.status.setText(self.midi_path.name if self.midi_path else "")
 
+    @Slot(int, str)
     def _on_audio_failed(self, token: int, message: str) -> None:
         if token != self._audio_token:
             return
@@ -257,6 +264,7 @@ class PlaybackTab(QWidget):
             self.frame_source = None
 
     def shutdown(self) -> None:
+        self._stop_export()
         self._timer.stop()
         self._audio_token += 1
         self._pool.waitForDone(5000)
@@ -269,22 +277,70 @@ class PlaybackTab(QWidget):
         dialog = _ExportDialog(self.midi_path.with_suffix(".mp4"), self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
-        output, width, height, fps = dialog.values()
-        worker = self.start_export(output, width, height, fps)
-        progress = QProgressDialog("Rendering video…", "Cancel", 0, 100, self)
+        self.run_export(*dialog.values())
+
+    def run_export(self, output: Path, width: int, height: int, fps: int) -> ExportWorker:
+        """Start a threaded export with a modal progress dialog."""
+        progress = QProgressDialog("Preparing audio…", "Cancel", 0, 0, self)
         progress.setWindowTitle("Export video")
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setAutoClose(False)
         progress.setAutoReset(False)
+        progress.setMinimumDuration(0)
+        self._export_progress = progress
+        worker = self.start_export(output, width, height, fps)
         progress.canceled.connect(worker.cancel)
-        worker.progress.connect(lambda done, total: (progress.setMaximum(total), progress.setValue(done)))
-        worker.finished.connect(lambda path: self._export_done(progress, f"Saved {path}"))
-        worker.failed.connect(lambda msg: self._export_done(progress, msg))
         progress.show()
+        return worker
 
-    def _export_done(self, progress: QProgressDialog, message: str) -> None:
-        progress.close()
+    @Slot(str)
+    def _on_export_stage(self, text: str) -> None:
+        if self._export_progress is not None:
+            self._export_progress.setLabelText(text)
+
+    @Slot(int, int)
+    def _on_export_progress(self, done: int, total: int) -> None:
+        if self._export_progress is not None:
+            self._export_progress.setMaximum(total)
+            self._export_progress.setValue(done)
+
+    @Slot(str)
+    def _on_export_finished(self, path: str) -> None:
+        self._export_done(f"Saved {path}")
+
+    @Slot(str)
+    def _on_export_failed(self, message: str) -> None:
+        self._export_done(message)
+
+    def _export_done(self, message: str) -> None:
+        if self._export_progress is not None:
+            self._export_progress.close()
+            self._export_progress.deleteLater()
+            self._export_progress = None
+        self._join_export_thread(10000)
+        self._export_worker = None
+        self._timer.start()
+        self.export_running.emit(False)
         self.status.setText(message)
+
+    def _join_export_thread(self, timeout_ms: int) -> None:
+        thread = self._export_thread
+        if thread is None:
+            return
+        thread.quit()
+        thread.wait(timeout_ms)
+        thread.deleteLater()
+        self._export_thread = None
+
+    def _stop_export(self) -> None:
+        """Cancel a running export and wait for its thread before resources go away."""
+        if self._export_worker is not None:
+            self._export_worker.cancel()
+        if self._export_progress is not None:
+            self._export_progress.close()
+            self._export_progress = None
+        self._join_export_thread(120000)
+        self._export_worker = None
 
     def start_export(
         self, output: str | Path, width: int, height: int, fps: int, threaded: bool = True
@@ -301,12 +357,19 @@ class PlaybackTab(QWidget):
         )
         if not threaded:
             return worker
+        if self.player is not None:
+            self.player.pause()
+            self.play_button.setText("Play")
+        self._timer.stop()
+        self.export_running.emit(True)
         thread = QThread(self)
         worker.moveToThread(thread)
+        queued = Qt.ConnectionType.QueuedConnection
+        worker.stage.connect(self._on_export_stage, queued)
+        worker.progress.connect(self._on_export_progress, queued)
+        worker.finished.connect(self._on_export_finished, queued)
+        worker.failed.connect(self._on_export_failed, queued)
         thread.started.connect(worker.run)
-        worker.finished.connect(thread.quit)
-        worker.failed.connect(thread.quit)
-        thread.finished.connect(thread.deleteLater)
         self._export_thread = thread
         self._export_worker = worker
         thread.start()

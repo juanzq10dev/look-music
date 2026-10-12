@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
 
+from look_music.audio import render_soundfont, synthesize, write_wav
 from look_music.cli import render
+from look_music.midi import load_midi
 from look_music.preset import Preset
 
 
@@ -21,6 +24,7 @@ class ExportWorker(QObject):
     progress = Signal(int, int)
     finished = Signal(str)
     failed = Signal(str)
+    stage = Signal(str)
 
     def __init__(
         self,
@@ -59,14 +63,20 @@ class ExportWorker(QObject):
             self.progress.emit(done, total)
 
         try:
-            if self._cancelled:
-                raise _Cancelled
-            render(
-                self.midi_path, self.output,
-                width=self.width, height=self.height, fps=self.fps, preset=self.preset,
-                lead_in=self.lead_in, tail=self.tail, crf=18, audio=self.audio,
-                soundfont=self.soundfont, audio_file=self.audio_file, progress=on_progress,
-            )
+            self._check_cancelled()
+            with tempfile.TemporaryDirectory() as tmp:
+                audio_file = self.audio_file
+                if audio_file is None and self.audio:
+                    self.stage.emit("Preparing audio…")
+                    audio_file = self._prepare_audio(Path(tmp) / "audio.wav")
+                    self._check_cancelled()
+                self.stage.emit("Rendering frames…")
+                render(
+                    self.midi_path, self.output,
+                    width=self.width, height=self.height, fps=self.fps, preset=self.preset,
+                    lead_in=self.lead_in, tail=self.tail, crf=18, audio=audio_file is not None,
+                    audio_file=audio_file, progress=on_progress,
+                )
         except _Cancelled:
             self._remove_partial()
             self.failed.emit("Export cancelled")
@@ -75,6 +85,21 @@ class ExportWorker(QObject):
             self.failed.emit(str(exc) or type(exc).__name__)
         else:
             self.finished.emit(str(self.output))
+
+    def _check_cancelled(self) -> None:
+        if self._cancelled:
+            raise _Cancelled
+
+    def _prepare_audio(self, wav_path: Path) -> Path:
+        """Synthesize from the unshifted song: render() delays an audio file by lead_in itself."""
+        song = load_midi(self.midi_path)
+        samples = (
+            render_soundfont(song, self.soundfont, tail=self.tail)
+            if self.soundfont
+            else synthesize(song, tail=self.tail)
+        )
+        write_wav(wav_path, samples)
+        return wav_path
 
     def _remove_partial(self) -> None:
         try:
