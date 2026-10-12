@@ -1,4 +1,4 @@
-"""A simple additive piano-like synthesizer and mono WAV writer."""
+"""Piano audio: SoundFont rendering, a built-in additive synth fallback, and a mono WAV writer."""
 
 from __future__ import annotations
 
@@ -59,6 +59,62 @@ def synthesize(song: Song, sample_rate: int = SAMPLE_RATE, tail: float = 2.0) ->
     if peak > PEAK_TARGET:
         buf *= PEAK_TARGET / peak
     return buf.astype(np.float32)
+
+
+def render_soundfont(
+    song: Song,
+    soundfont: str | Path,
+    sample_rate: int = SAMPLE_RATE,
+    tail: float = 2.0,
+    program: int = 0,
+) -> np.ndarray:
+    """Render the song with an SF2 piano; mono float32 in [-1, 1], same length rule as synthesize()."""
+    import tinysoundfont
+
+    path = Path(soundfont)
+    if not path.is_file():
+        raise FileNotFoundError(f"soundfont not found: {path}")
+
+    total = int(round((song.duration + tail) * sample_rate))
+    synth = tinysoundfont.Synth(samplerate=sample_rate)
+    sfid = synth.sfload(str(path))
+    synth.program_select(0, sfid, 0, program)
+
+    # Note-off at sound_end (not end) so the sustain pedal extension is already applied.
+    events: list[tuple[int, int, int, int]] = []  # (sample, 0=off / 1=on, pitch, velocity)
+    for note in song.notes:
+        on = int(round(note.start * sample_rate))
+        if on >= total:
+            continue
+        events.append((on, 1, note.pitch, note.velocity))
+        events.append((max(int(round(note.sound_end * sample_rate)), on), 0, note.pitch, 0))
+    events.sort()
+
+    buf = np.zeros((total, 2), dtype=np.float32)
+    pos = 0
+
+    def advance(to: int) -> None:
+        nonlocal pos
+        while pos < to:
+            n = min(to - pos, sample_rate * 10)
+            buf[pos : pos + n] = np.frombuffer(synth.generate(n), dtype=np.float32).reshape(n, 2)
+            pos += n
+
+    for sample, is_on, pitch, velocity in events:
+        if sample >= total:
+            break
+        advance(sample)
+        if is_on:
+            synth.noteon(0, pitch, velocity)
+        else:
+            synth.noteoff(0, pitch)
+    advance(total)
+
+    mono = buf.mean(axis=1, dtype=np.float64)
+    peak = float(np.max(np.abs(mono))) if total else 0.0
+    if peak > PEAK_TARGET:
+        mono *= PEAK_TARGET / peak
+    return mono.astype(np.float32)
 
 
 def write_wav(path: str | Path, samples: np.ndarray, sample_rate: int = SAMPLE_RATE) -> None:

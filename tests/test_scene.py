@@ -4,7 +4,7 @@ import numpy as np
 
 from look_music.keyboard import key_layout
 from look_music.midi import Note, Song
-from look_music.preset import Preset
+from look_music.preset import Preset, hex_to_rgb
 from look_music.render.scene import INSTANCE_COLUMNS, build_instances, prepare_notes
 
 W, H = 1920, 1080
@@ -18,9 +18,9 @@ def note(start, end, pitch=60, velocity=100, track=0):
     return Note(start, end, end, pitch, velocity, track)
 
 
-def build(notes, t):
+def build(notes, t, preset=PRESET):
     song = Song(notes=tuple(notes), duration=max((n.end for n in notes), default=0.0))
-    return build_instances(prepare_notes(song), t, W, H, LAYOUT, PRESET)
+    return build_instances(prepare_notes(song, preset), t, W, H, LAYOUT, preset)
 
 
 def test_empty_has_only_keyboard_rows():
@@ -61,6 +61,51 @@ def test_sounding_key_changes_color():
 
 def test_pitches_outside_piano_dropped():
     song = Song(notes=(note(0, 1, pitch=10), note(0, 1, pitch=120), note(0, 1, pitch=60)), duration=1)
-    assert len(prepare_notes(song).pitch) == 1
+    assert len(prepare_notes(song, PRESET).pitch) == 1
     out = build([note(0, 1, pitch=10), note(0, 1, pitch=120)], 0.5)
     assert out.shape[0] == KEY_ROWS
+
+
+def song_of(notes):
+    return Song(notes=tuple(notes), duration=max(n.end for n in notes))
+
+
+def test_hand_mode_splits_at_hand_split():
+    preset = Preset(color_mode="hand", hand_split=60)
+    nb = prepare_notes(song_of([note(0, 1, pitch=59), note(0.1, 1, pitch=60)]), preset)
+    assert np.allclose(nb.base_color[0], preset.left_hand_color, atol=1e-6)
+    assert np.allclose(nb.base_color[1], preset.right_hand_color, atol=1e-6)
+
+
+def test_pitch_mode_uses_pitch_class():
+    preset = Preset(color_mode="pitch")
+    nb = prepare_notes(song_of([note(0, 1, pitch=61), note(0.1, 1, pitch=73)]), preset)
+    assert np.allclose(nb.base_color, [preset.pitch_colors[1]] * 2, atol=1e-6)
+
+
+def test_auto_mode_resolves_by_track_count():
+    single = prepare_notes(song_of([note(0, 1, pitch=50), note(0, 1, pitch=70)]), PRESET)
+    assert np.allclose(single.base_color[0], PRESET.left_hand_color, atol=1e-6)
+    assert np.allclose(single.base_color[1], PRESET.right_hand_color, atol=1e-6)
+    multi = prepare_notes(
+        song_of([note(0, 1, pitch=50, track=0), note(0.1, 1, pitch=70, track=1)]), PRESET
+    )
+    assert np.allclose(multi.base_color[0], PRESET.track_color(0), atol=1e-6)
+    assert np.allclose(multi.base_color[1], PRESET.track_color(1), atol=1e-6)
+
+
+def test_glow_column():
+    out = build([note(0.0, 2.0, pitch=60)], 1.0)
+    assert out[0, 9] == 1.0  # note
+    assert out[1, 9] == 0.0  # edge
+    keys = out[2:]
+    lit = np.isclose(keys[:, 0], LAYOUT.x[60])
+    assert lit.sum() == 1
+    assert keys[lit, 9][0] == 1.0
+    assert np.all(keys[~lit, 9] == 0.0)
+
+
+def test_hand_mode_note_color_in_instances():
+    notes = [note(0, 2, pitch=40, velocity=127)]
+    out = build(notes, 0.0, Preset(color_mode="hand"))
+    assert np.allclose(out[0, 4:7], hex_to_rgb("#F06292"), atol=1e-5)

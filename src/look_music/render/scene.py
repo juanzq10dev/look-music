@@ -10,7 +10,7 @@ from look_music.keyboard import HIGHEST_PITCH, LOWEST_PITCH, KeyboardLayout
 from look_music.midi import Song
 from look_music.preset import Preset
 
-INSTANCE_COLUMNS = 9  # x, y, w, h, r, g, b, a, radius
+INSTANCE_COLUMNS = 10  # x, y, w, h, r, g, b, a, radius, glow
 
 EDGE_HEIGHT = 4.0  # px at 1080p
 KEY_GAP = 1.0
@@ -28,22 +28,41 @@ class NoteArrays:
     pitch: np.ndarray  # int16
     velocity: np.ndarray  # int16
     track: np.ndarray  # int16
+    base_color: np.ndarray  # float32 (n, 3), before velocity/black-key brightness
 
 
-def prepare_notes(song: Song) -> NoteArrays:
+def _base_colors(pitch: np.ndarray, track: np.ndarray, preset: Preset) -> np.ndarray:
+    mode = preset.color_mode
+    if mode == "auto":
+        mode = "track" if len(np.unique(track)) >= 2 else "hand"
+    if mode == "track":
+        palette = np.asarray(preset.track_colors, dtype=np.float32)
+        return palette[track.astype(np.intp) % len(palette)]
+    if mode == "pitch":
+        palette = np.asarray(preset.pitch_colors, dtype=np.float32)
+        return palette[pitch.astype(np.intp) % 12]
+    left = np.asarray(preset.left_hand_color, dtype=np.float32)
+    right = np.asarray(preset.right_hand_color, dtype=np.float32)
+    return np.where((pitch < preset.hand_split)[:, None], left, right).astype(np.float32)
+
+
+def prepare_notes(song: Song, preset: Preset) -> NoteArrays:
     """Flatten a song into arrays sorted by start time, dropping notes off the 88 keys."""
     notes = [n for n in song.notes if LOWEST_PITCH <= n.pitch <= HIGHEST_PITCH]
     notes.sort(key=lambda n: n.start)
+    pitch = np.array([n.pitch for n in notes], dtype=np.int16)
+    track = np.array([n.track for n in notes], dtype=np.int16)
     return NoteArrays(
         start=np.array([n.start for n in notes], dtype=np.float64),
         end=np.array([n.end for n in notes], dtype=np.float64),
-        pitch=np.array([n.pitch for n in notes], dtype=np.int16),
+        pitch=pitch,
         velocity=np.array([n.velocity for n in notes], dtype=np.int16),
-        track=np.array([n.track for n in notes], dtype=np.int16),
+        track=track,
+        base_color=_base_colors(pitch, track, preset),
     )
 
 
-def _rows(x, y, w, h, color, radius) -> np.ndarray:
+def _rows(x, y, w, h, color, radius, glow) -> np.ndarray:
     """Stack columns into instance rows; scalars broadcast to the longest column."""
     n = np.broadcast(x, y, w, h).size
     out = np.empty((n, INSTANCE_COLUMNS), dtype=np.float32)
@@ -54,6 +73,7 @@ def _rows(x, y, w, h, color, radius) -> np.ndarray:
     out[:, 4:7] = color
     out[:, 7] = 1.0
     out[:, 8] = radius
+    out[:, 9] = glow
     return out
 
 
@@ -65,7 +85,7 @@ def build_instances(
     layout: KeyboardLayout,
     preset: Preset,
 ) -> np.ndarray:
-    """Return float32 array shape (N, 9). Rows are drawn in order (later rows on top)."""
+    """Return float32 array shape (N, 10). Rows are drawn in order (later rows on top)."""
     scale = height / 1080
     keyboard_top = height * (1 - preset.keyboard_height)
     keyboard_h = height - keyboard_top
@@ -76,8 +96,7 @@ def build_instances(
     idx = np.flatnonzero(visible)
     start, end, pitch = notes.start[idx], notes.end[idx], notes.pitch[idx].astype(np.intp)
 
-    palette = np.asarray(preset.track_colors, dtype=np.float64)
-    colors = palette[notes.track[idx].astype(np.intp) % len(palette)]
+    colors = notes.base_color[idx].astype(np.float64)
     low = preset.min_velocity_brightness
     brightness = low + (1 - low) * notes.velocity[idx] / 127
     brightness = np.where(layout.black[pitch], brightness * preset.black_note_darkness, brightness)
@@ -102,11 +121,12 @@ def build_instances(
         bottom[sel] - top[sel],
         colors[sel],
         preset.note_radius * scale,
+        1.0,
     )
 
     edge_h = EDGE_HEIGHT * scale
     edge_row = _rows(
-        0.0, keyboard_top - edge_h, float(width), edge_h, preset.keyboard_edge, 0.0
+        0.0, keyboard_top - edge_h, float(width), edge_h, preset.keyboard_edge, 0.0, 0.0
     )
 
     def key_rows(pitches, base, mix, key_h, radius, trim):
@@ -121,6 +141,7 @@ def build_instances(
             key_h,
             col,
             radius,
+            s.astype(np.float32),
         )
 
     all_pitches = np.arange(LOWEST_PITCH, HIGHEST_PITCH + 1)

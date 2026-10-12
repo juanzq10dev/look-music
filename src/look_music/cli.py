@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import math
+import os
 import sys
 import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
 
-from look_music.audio import synthesize, write_wav
+from look_music.audio import render_soundfont, synthesize, write_wav
 from look_music.export import VideoWriter
 from look_music.keyboard import key_layout
 from look_music.midi import load_midi
@@ -33,11 +35,12 @@ def render(
     tail: float,
     crf: int,
     audio: bool,
+    soundfont: Path | None = None,
     progress: Callable[[int, int], None] | None = None,
 ) -> int:
     """Render a MIDI file to an MP4; return the number of frames written."""
     song = load_midi(input_path).shifted(lead_in)
-    notes = prepare_notes(song)
+    notes = prepare_notes(song, preset)
     layout = key_layout(width)
     total_frames = math.ceil((song.duration + tail) * fps)
 
@@ -45,8 +48,15 @@ def render(
         audio_path = None
         if audio:
             audio_path = Path(tmp) / "audio.wav"
-            write_wav(audio_path, synthesize(song, tail=tail))
-        with Renderer(width, height, preset.background) as renderer, VideoWriter(
+            samples = (
+                render_soundfont(song, soundfont, tail=tail)
+                if soundfont
+                else synthesize(song, tail=tail)
+            )
+            write_wav(audio_path, samples)
+        with Renderer(
+            width, height, preset.background, bloom=preset.bloom_settings()
+        ) as renderer, VideoWriter(
             output_path, width, height, fps, audio_path=audio_path, crf=crf
         ) as writer:
             for k in range(total_frames):
@@ -71,6 +81,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tail", type=float, default=2.0, help="seconds after the last note")
     p.add_argument("--crf", type=int, default=18, help="x264 quality (lower is better)")
     p.add_argument("--no-audio", action="store_true", help="omit the synthesized audio track")
+    p.add_argument(
+        "--soundfont", type=Path,
+        help="SF2 SoundFont for piano audio (default: $LOOK_MUSIC_SOUNDFONT, else built-in synth)",
+    )
+    p.add_argument("--no-bloom", action="store_true", help="disable the glow, regardless of preset")
     return parser
 
 
@@ -91,12 +106,20 @@ def main(argv: list[str] | None = None) -> int:
     if not args.input.is_file():
         return _error(f"input file not found: {args.input}")
 
+    soundfont = args.soundfont
+    if soundfont is None and os.environ.get("LOOK_MUSIC_SOUNDFONT"):
+        soundfont = Path(os.environ["LOOK_MUSIC_SOUNDFONT"])
+    if soundfont is not None and not soundfont.is_file():
+        return _error(f"soundfont not found: {soundfont}")
+
     try:
         preset = load_preset(args.preset) if args.preset else Preset()
     except OSError as exc:
         return _error(f"cannot read preset: {exc}")
     except (ValueError, TypeError) as exc:  # includes json.JSONDecodeError
         return _error(f"invalid preset {args.preset}: {exc}")
+    if args.no_bloom:
+        preset = dataclasses.replace(preset, bloom=False)
 
     start = time.monotonic()
     last_print = 0.0
@@ -118,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             args.input, args.output,
             width=args.width, height=args.height, fps=args.fps, preset=preset,
             lead_in=args.lead_in, tail=args.tail, crf=args.crf,
-            audio=not args.no_audio, progress=progress,
+            audio=not args.no_audio, soundfont=soundfont, progress=progress,
         )
     except Exception as exc:
         if printed:

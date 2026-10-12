@@ -9,6 +9,7 @@ dependencies = [
     "moderngl>=5.10",
     "numpy>=1.26",
     "pretty_midi>=0.2.10",
+    "tinysoundfont>=0.3.7",
 ]
 
 [project.scripts]

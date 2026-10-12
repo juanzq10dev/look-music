@@ -114,3 +114,24 @@ def test_unreadable_midi(tmp_path, capsys):
     code = main(["render", str(bad), "-o", str(tmp_path / "o.mp4")])
     assert code == 2
     assert capsys.readouterr().err.startswith("error:")
+
+
+def test_missing_soundfont(midi_path, tmp_path, capsys):
+    code = main([
+        "render", str(midi_path), "-o", str(tmp_path / "o.mp4"),
+        "--soundfont", str(tmp_path / "nope.sf2"),
+    ])
+    assert code == 2
+    assert capsys.readouterr().err.startswith("error:")
+
+
+@needs_gl
+def test_main_no_bloom(midi_path, tmp_path):
+    out = tmp_path / "out.mp4"
+    code = main([
+        "render", str(midi_path), "-o", str(out), "--width", str(W), "--height", str(H),
+        "--fps", str(FPS), "--lead-in", str(LEAD_IN), "--tail", str(TAIL),
+        "--crf", "28", "--no-audio", "--no-bloom",
+    ])
+    assert code == 0
+    assert out.stat().st_size > 0

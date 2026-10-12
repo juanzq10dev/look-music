@@ -100,6 +100,7 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pretty-midi" },
+    { name = "tinysoundfont" },
 ]
 
 [package.dev-dependencies]
@@ -113,6 +114,7 @@ requires-dist = [
     { name = "moderngl", specifier = ">=5.10" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pretty-midi", specifier = ">=0.2.10" },
+    { name = "tinysoundfont", specifier = ">=0.3.7" },
 ]
 
 [package.metadata.requires-dev]
@@ -369,6 +371,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pyaudio"
+version = "0.2.14"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/26/1d/8878c7752febb0f6716a7e1a52cb92ac98871c5aa522cba181878091607c/PyAudio-0.2.14.tar.gz", hash = "sha256:78dfff3879b4994d1f4fc6485646a57755c6ee3c19647a491f790a0895bd2f87", size = 47066, upload-time = "2023-11-07T07:11:48.806Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/f0/b0eab89eafa70a86b7b566a4df2f94c7880a2d483aa8de1c77d335335b5b/PyAudio-0.2.14-cp311-cp311-win32.whl", hash = "sha256:506b32a595f8693811682ab4b127602d404df7dfc453b499c91a80d0f7bad289", size = 144624, upload-time = "2023-11-07T07:11:36.94Z" },
+    { url = "https://files.pythonhosted.org/packages/82/d8/f043c854aad450a76e476b0cf9cda1956419e1dacf1062eb9df3c0055abe/PyAudio-0.2.14-cp311-cp311-win_amd64.whl", hash = "sha256:bbeb01d36a2f472ae5ee5e1451cacc42112986abe622f735bb870a5db77cf903", size = 164070, upload-time = "2023-11-07T07:11:38.579Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/45/8d2b76e8f6db783f9326c1305f3f816d4a12c8eda5edc6a2e1d03c097c3b/PyAudio-0.2.14-cp312-cp312-win32.whl", hash = "sha256:5fce4bcdd2e0e8c063d835dbe2860dac46437506af509353c7f8114d4bacbd5b", size = 144750, upload-time = "2023-11-07T07:11:40.142Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/6a/d25812e5f79f06285767ec607b39149d02aa3b31d50c2269768f48768930/PyAudio-0.2.14-cp312-cp312-win_amd64.whl", hash = "sha256:12f2f1ba04e06ff95d80700a78967897a489c05e093e3bffa05a84ed9c0a7fa3", size = 164126, upload-time = "2023-11-07T07:11:41.539Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/77/66cd37111a87c1589b63524f3d3c848011d21ca97828422c7fde7665ff0d/PyAudio-0.2.14-cp313-cp313-win32.whl", hash = "sha256:95328285b4dab57ea8c52a4a996cb52be6d629353315be5bfda403d15932a497", size = 150982, upload-time = "2024-11-20T19:12:12.404Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/8b/7f9a061c1cc2b230f9ac02a6003fcd14c85ce1828013aecbaf45aa988d20/PyAudio-0.2.14-cp313-cp313-win_amd64.whl", hash = "sha256:692d8c1446f52ed2662120bcd9ddcb5aa2b71f38bda31e58b19fb4672fffba69", size = 173655, upload-time = "2024-11-20T19:12:13.616Z" },
+]
+
+[[package]]
 name = "pygments"
 version = "2.21.0"
 source = { registry = "https://pypi.org/simple" }
@@ -400,4 +416,29 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "tinysoundfont"
+version = "0.3.7"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyaudio" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0d/c9/96ef50b61a0c39fb7dbafff61ee759e0eb60e87f98eb04860579672127c8/tinysoundfont-0.3.7.tar.gz", hash = "sha256:13b560f35469303064d7b597c1584ec35f18193fd915c502c29fcba90ac11d31", size = 372892, upload-time = "2025-06-03T15:17:49.392Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f3/75/89def81b8726eacd0d9e6f117aed172ead7a1d454879edea588403f7788d/tinysoundfont-0.3.7-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:99650cb625ebfe808fe24ed279b5970a9b0b2133f624dcaceddca4f364bb5fe6", size = 146444, upload-time = "2025-06-03T15:16:36.35Z" },
+    { url = "https://files.pythonhosted.org/packages/98/e8/a255386032b9acda3c20ae62b3f751f1c957e55b0e215e5674b9b689e0b6/tinysoundfont-0.3.7-cp311-cp311-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:6e4189786c57d16c269337e60cdb6b46204a75a67748f3bc6e2cc39a5c66d5e3", size = 202194, upload-time = "2025-06-03T15:16:37.602Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/b7/d5e33d22462d7ddbfaffee6b918d73d72271f051b181d7cc6935724b045a/tinysoundfont-0.3.7-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f638536ce801dd77526419e25a53576ffd4f7d58d6e1673e6b70a1a8c4773448", size = 193660, upload-time = "2025-06-03T15:16:38.856Z" },
+    { url = "https://files.pythonhosted.org/packages/da/b6/24f6189d573a65cec47513ef2bc9c7fd442861918db385ddd6a42f62c706/tinysoundfont-0.3.7-cp311-cp311-musllinux_1_1_i686.whl", hash = "sha256:64b69f8c1785d3490afe36d7c5656e95de02edbac1b73aa34c0ffd6d18ea4690", size = 778111, upload-time = "2025-06-03T15:16:41.105Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/b3/8e778f7345fbb7c4f50773ed09c77bc48eee2d6d1fcda7a54e5065bdaf69/tinysoundfont-0.3.7-cp311-cp311-musllinux_1_1_x86_64.whl", hash = "sha256:9860a285d346bb4910a8446efabc5671777e4df9424409e926a4c9a40d4de998", size = 718927, upload-time = "2025-06-03T15:16:42.642Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/04/3586b7e9c6acfa65dc8101c8f81f28432259ae2b7ad8e8dd4c75a84c88fb/tinysoundfont-0.3.7-cp311-cp311-win32.whl", hash = "sha256:94a341c8c79af3beb29e1e845f5f0fb6668ab650db319021d926109c9fc20230", size = 136219, upload-time = "2025-06-03T15:16:44.43Z" },
+    { url = "https://files.pythonhosted.org/packages/52/4b/4c086f2190b61339a3fcc2b0a586c9cd05c3d641718a7b5d2d4e0d14caaf/tinysoundfont-0.3.7-cp311-cp311-win_amd64.whl", hash = "sha256:86453db5bb713c28db505f9a9545702942278ce69556b8fd73135ac652fda5b6", size = 153163, upload-time = "2025-06-03T15:16:45.624Z" },
+    { url = "https://files.pythonhosted.org/packages/64/67/9b07986a5ba6fe93efb02e346ed8824d208ad7c1d22515ebe6c3b60c065a/tinysoundfont-0.3.7-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:b871a995adb9ee6e0f14f670311109f48ab6faed7eb746a3ef0be3c5792ad5b7", size = 146338, upload-time = "2025-06-03T15:16:46.839Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/fe/289ad2d5712eb670247cc7c2926495cf582da1a5493543fddf46fea8d3cb/tinysoundfont-0.3.7-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8e6efd15ca7f5647db7709e8d73cebce08a56aded46222654272be5f21002779", size = 200417, upload-time = "2025-06-03T15:16:48.075Z" },
+    { url = "https://files.pythonhosted.org/packages/57/d3/9308fbf4445395ffa3d3cd4fb8c83a85f3b7aa93fa1d9ed1f003e7facdf9/tinysoundfont-0.3.7-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c48a614fbc0287f16ad4bef857c79e80ba9e413474fbe47f460d2dd1ec449d4b", size = 192372, upload-time = "2025-06-03T15:16:49.542Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/fb/2832235a7ff0d62cf73c0d15a5477d1174854ec1e7911c24c7682b722029/tinysoundfont-0.3.7-cp312-cp312-musllinux_1_1_i686.whl", hash = "sha256:015be0a82b2ccf0810b2f99dfb6597f31b3e9a0349fa850e6ba5a18a28846780", size = 775618, upload-time = "2025-06-03T15:16:51.347Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/58/fceb0e19d3c5a5a5acb95cbfc88e54675efdbd8903860f6797c6efa2f97c/tinysoundfont-0.3.7-cp312-cp312-musllinux_1_1_x86_64.whl", hash = "sha256:56f190d48865ba06e3b1cdfaab5e35c630a3941687c1d42fd9ae1bb81210d152", size = 716786, upload-time = "2025-06-03T15:16:53.334Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/f6/344747b94e50cb30fc2f5f61de5355148ffa297461ca33188331f2aac210/tinysoundfont-0.3.7-cp312-cp312-win32.whl", hash = "sha256:72767f4645567dcc7de2966c7d734c6a8da3d7b44c63d93e05b2e6e3e1942110", size = 136203, upload-time = "2025-06-03T15:16:55Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/8e/041e5342fda5215622dcac52efa08b3abb5b17b14f21586cb5b89dee5a3d/tinysoundfont-0.3.7-cp312-cp312-win_amd64.whl", hash = "sha256:402269dc9da85d722697a96254dbd64d57fe083f16e56b662d8ed897f53a1aa0", size = 153351, upload-time = "2025-06-03T15:16:56.257Z" },
 ]

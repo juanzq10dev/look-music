@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import wave
+from pathlib import Path
 
 import numpy as np
+import pytest
 
-from look_music.audio import SAMPLE_RATE, synthesize, write_wav
+from look_music.audio import SAMPLE_RATE, render_soundfont, synthesize, write_wav
 from look_music.midi import Note, Song
 
 
@@ -71,3 +74,40 @@ def test_write_wav_round_trip(tmp_path):
         pcm = np.frombuffer(wf.readframes(wf.getnframes()), dtype="<i2")
 
     assert np.max(np.abs(pcm / 32767.0 - samples)) < 1e-4
+
+
+def _find_soundfont() -> Path | None:
+    env = os.environ.get("LOOK_MUSIC_TEST_SOUNDFONT")
+    if env:
+        return Path(env)
+    cache = Path.home() / ".cache" / "look-music" / "soundfonts"
+    return next(iter(sorted(cache.glob("*.sf2"))), None)
+
+
+SOUNDFONT = _find_soundfont()
+needs_soundfont = pytest.mark.skipif(
+    SOUNDFONT is None or not SOUNDFONT.is_file(), reason="no test SoundFont available"
+)
+
+
+def test_soundfont_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError, match="nope.sf2"):
+        render_soundfont(_single(), tmp_path / "nope.sf2")
+
+
+@needs_soundfont
+def test_soundfont_length_dtype_range():
+    song = _single(length=1.5)
+    samples = render_soundfont(song, SOUNDFONT, tail=1.0)
+    assert samples.dtype == np.float32
+    assert samples.ndim == 1
+    assert len(samples) == round((song.duration + 1.0) * SAMPLE_RATE)
+    assert np.max(np.abs(samples)) <= 1.0
+    assert np.max(np.abs(samples)) > 0.01
+
+
+@needs_soundfont
+def test_soundfont_louder_velocity_gives_larger_rms():
+    quiet = render_soundfont(_single(velocity=30), SOUNDFONT)
+    loud = render_soundfont(_single(velocity=120), SOUNDFONT)
+    assert np.sqrt(np.mean(loud**2)) > np.sqrt(np.mean(quiet**2))
